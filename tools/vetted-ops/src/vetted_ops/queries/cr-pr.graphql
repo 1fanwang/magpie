@@ -23,7 +23,7 @@
 #
 # $owner / $repo are supplied by the dispatcher from policy, never by the
 # caller, so this query cannot be pointed at another repository.
-query($owner: String!, $repo: String!, $number: Int!) {
+query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) {
     viewerPermission
@@ -90,8 +90,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
       reviews(last: 50) {
         nodes { author { login } authorAssociation state submittedAt commit { oid } }
       }
-      reviewThreads(first: 50) {
+      reviewThreads(first: 50, after: $endCursor) {
         totalCount
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           isResolved

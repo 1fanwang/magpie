@@ -110,6 +110,7 @@ class PR:
     default_merge_method: str | None = None
     auto_merge_enabled: bool = False
     pending_not_required: tuple[str, ...] = ()
+    threads_complete: bool = True
     #: The last two commits with parents, verified signer and linked author logins (fixup checks).
     head_commits: tuple[dict[str, Any], ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
@@ -207,7 +208,9 @@ def from_node(node: dict[str, Any]) -> PR:
     latest = _nodes(node.get("latest"))
     rollup = ((latest[-1].get("commit") if latest else None) or {}).get("statusCheckRollup") or {}
     users, teams = _requests(node)
-    threads = _nodes(node.get("reviewThreads"))
+    thread_conn = node.get("reviewThreads") or {}
+    threads = _nodes(thread_conn)
+    thread_total = thread_conn.get("totalCount")
     reviews_raw = _nodes(node.get("reviews")) or _nodes(node.get("latestReviews"))
     reviews = tuple(
         Review(
@@ -258,8 +261,14 @@ def from_node(node: dict[str, Any]) -> PR:
         comments=tuple((_login(c), str(c.get("bodyText") or "")) for c in _nodes(node.get("comments"))),
         reviews=reviews,
         commits=commits,
-        threads_total=int((node.get("reviewThreads") or {}).get("totalCount") or len(threads)),
+        threads_total=int(thread_total or len(threads)),
         unresolved_threads=sum(1 for t in threads if not t.get("isResolved")),
+        threads_complete=(
+            isinstance(thread_total, int)
+            and thread_total == len(threads)
+            and not (thread_conn.get("pageInfo") or {}).get("hasNextPage")
+            and all(isinstance(t.get("isResolved"), bool) for t in threads)
+        ),
         rollup_state=rollup.get("state") if rollup else None,
         contexts=_contexts(rollup),
         pending_not_required=_pending_not_required(rollup) if rollup else (),
@@ -315,9 +324,45 @@ def load_open(path: Path) -> list[PR]:
 
 def load_pr(path: Path) -> PR:
     """One PR from a saved `gql-cr-pr <N>` read."""
-    data = json.loads(path.read_text(encoding="utf-8")).get("data") or {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    pages = document if isinstance(document, list) else [document]
+    if not pages:
+        raise SystemExit("pr-management: the saved gql-cr-pr read is empty; refresh it")
+    data = pages[0].get("data") or {}
     repo = data.get("repository") or {}
-    pr = from_node(repo.get("pullRequest") or {})
+    first = repo.get("pullRequest") or {}
+    pr = from_node(first)
+    if isinstance(document, list):
+        threads: list[dict[str, Any]] = []
+        complete = True
+        total = (first.get("reviewThreads") or {}).get("totalCount")
+        for index, page in enumerate(pages):
+            node = ((page.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+            conn = node.get("reviewThreads") or {}
+            info = conn.get("pageInfo") or {}
+            if (
+                page.get("errors")
+                or node.get("number") != first.get("number")
+                or node.get("headRefOid") != first.get("headRefOid")
+                or node.get("updatedAt") != first.get("updatedAt")
+                or conn.get("totalCount") != total
+                or info.get("hasNextPage") is not (index < len(pages) - 1)
+            ):
+                complete = False
+            threads.extend(_nodes(conn))
+        ids = [t.get("id") for t in threads]
+        pr.thread_details = tuple(threads)
+        pr.unresolved_threads = sum(1 for t in threads if not t.get("isResolved"))
+        pr.threads_complete = (
+            complete
+            and isinstance(total, int)
+            and total == len(threads)
+            and all(isinstance(i, str) and i for i in ids)
+            and len(set(ids)) == len(ids)
+            and all(isinstance(t.get("isResolved"), bool) for t in threads)
+        )
+    elif document.get("errors"):
+        pr.threads_complete = False
     pr.viewer = (data.get("viewer") or {}).get("login")
     pr.viewer_permission = repo.get("viewerPermission")
     pr.auto_merge_allowed = bool(repo.get("autoMergeAllowed"))

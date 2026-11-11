@@ -22,6 +22,8 @@ uv run --project <framework>/tools/pr-management pr-management code-review conte
 ```
 
 The first `context` run lists `cr-pr-template` and `gql-cr-pr-stack` under `needs` (a 404 or a schema error means "none"); save them and re-run.
+The PR read fetches every review-thread page.
+If `context` or `disposition` requests `gql-cr-pr` again because the saved threads are incomplete or changed during pagination, refresh that saved read before proceeding.
 **Propose** the `headline` as printed, with the queue row's match chips:
 
 ```text

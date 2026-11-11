@@ -216,6 +216,71 @@ def test_context_then_disposition_then_render(
     assert "Apache Product maintainer" in body and "https://example.org/contrib" in body
 
 
+def test_incomplete_threads_request_a_fresh_read_and_block_approval(
+    capsys: pytest.CaptureFixture[str], project: Path, saved: Path, tmp_path: Path
+) -> None:
+    path = saved / "cr-pr-7.json"
+    document = json.loads(path.read_text())
+    document["data"]["repository"]["pullRequest"]["reviewThreads"]["totalCount"] = 1
+    path.write_text(json.dumps(document))
+    common = ["--config-dir", str(project), "code-review"]
+    context = _run(
+        capsys, *common, "context", "--saved-dir", str(saved), "--pr", "7", "--repo-root", str(tmp_path)
+    )
+    assert any(n["op"] == "gql-cr-pr" for n in context["needs"])
+    assert "headline" not in context
+    decision = _run(
+        capsys, *common, "disposition", "--saved-dir", str(saved), "--pr", "7", "--viewer", "alice"
+    )
+    assert decision["needs"][0]["op"] == "gql-cr-pr"
+    assert "disposition" not in decision
+    findings, summary = tmp_path / "findings.json", tmp_path / "summary.txt"
+    findings.write_text("[]")
+    summary.write_text("Reviewed.")
+    with pytest.raises(SystemExit, match="review threads"):
+        cli.main(
+            [
+                *common,
+                "render",
+                "--saved-dir",
+                str(saved),
+                "--pr",
+                "7",
+                "--findings",
+                str(findings),
+                "--summary",
+                str(summary),
+                "--disposition",
+                "APPROVE",
+                "--out-dir",
+                str(tmp_path / "out"),
+            ]
+        )
+    first = document["data"]["repository"]["pullRequest"]
+    first["reviewThreads"] = {
+        "totalCount": 2,
+        "pageInfo": {"hasNextPage": True, "endCursor": "cursor"},
+        "nodes": [thread("one", outdated=False, resolved=True)],
+    }
+    second = json.loads(json.dumps(document))
+    second["data"]["repository"]["pullRequest"]["reviewThreads"] = {
+        "totalCount": 2,
+        "pageInfo": {"hasNextPage": False, "endCursor": "end"},
+        "nodes": [thread("two", outdated=True)],
+    }
+    path.write_text(json.dumps([document, second]))
+    decision = _run(
+        capsys, *common, "disposition", "--saved-dir", str(saved), "--pr", "7", "--viewer", "alice"
+    )
+    assert decision["disposition"] == "COMMENT"
+    assert "1 unresolved review thread(s)" in decision["approval_gates"]
+    context = _run(
+        capsys, *common, "context", "--saved-dir", str(saved), "--pr", "7", "--repo-root", str(tmp_path)
+    )
+    assert "Threads: 1 unresolved" in context["headline"]
+    assert [t["id"] for t in context["outdated_threads"]] == ["two"]
+
+
 def test_guard_needs_the_liveness_read_then_checks_the_head(
     capsys: pytest.CaptureFixture[str], project: Path, saved: Path
 ) -> None:

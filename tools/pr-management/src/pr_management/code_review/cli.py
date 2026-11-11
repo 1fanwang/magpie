@@ -300,6 +300,9 @@ def _context(args: argparse.Namespace, cfg: config.Config) -> dict[str, Any]:
     if pr_path is None or diff_path is None:
         return {"pr": n, "needs": needs}
     pr = data.load_pr(pr_path)
+    if not pr.threads_complete:
+        needs.append(_need("gql-cr-pr", [str(n)], f"cr-pr-{n}.json", "refresh incomplete review threads"))
+        return {"pr": n, "needs": needs}
     files = difflib.parse(diff_path.read_text(encoding="utf-8", errors="replace"))
     template = data.decode_content(_file(saved, "cr-pr-template.json"))
     real = selectors.real_ci(pr, cfg)
@@ -391,6 +394,15 @@ def _doc_name(category: str) -> str:
 
 def _disposition(args: argparse.Namespace, cfg: config.Config) -> dict[str, Any]:
     pr = data.load_pr(args.saved_dir / f"cr-pr-{args.pr}.json")
+    if not pr.threads_complete:
+        return {
+            "pr": args.pr,
+            "needs": [
+                _need(
+                    "gql-cr-pr", [str(args.pr)], f"cr-pr-{args.pr}.json", "refresh incomplete review threads"
+                )
+            ],
+        }
     findings = json.loads(Path(args.findings).read_text(encoding="utf-8")) if args.findings else []
     result = _decide(args, cfg, pr, findings, args.viewer)
     result["docs"] = [
@@ -520,6 +532,8 @@ def _reviewers(args: argparse.Namespace, cfg: config.Config) -> dict[str, Any]:
 def _render(args: argparse.Namespace, cfg: config.Config) -> dict[str, Any]:
     saved: Path = args.saved_dir
     pr = data.load_pr(saved / f"cr-pr-{args.pr}.json")
+    if args.disposition == "APPROVE" and not pr.threads_complete:
+        raise SystemExit("pr-management: the saved read has incomplete review threads; refresh gql-cr-pr")
     files = difflib.parse((saved / f"diff-{args.pr}.patch").read_text(encoding="utf-8", errors="replace"))
     findings = json.loads(Path(args.findings).read_text(encoding="utf-8"))
     summary = Path(args.summary).read_text(encoding="utf-8").strip()

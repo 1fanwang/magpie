@@ -79,9 +79,9 @@ def test_the_open_sweep_walks_every_page_of_the_policy_repo(policy: config.Confi
     assert "owner=acme" in argv and "repo=product" in argv
 
 
-def test_the_single_pr_read_is_not_paginated(policy: config.Config) -> None:
+def test_the_single_pr_read_paginates_review_threads(policy: config.Config) -> None:
     argv = _argv(policy, "gql-cr-pr", "42")
-    assert "--paginate" not in argv and "number=42" in argv
+    assert "--paginate" in argv and "--slurp" in argv and "number=42" in argv
 
 
 @pytest.mark.parametrize(

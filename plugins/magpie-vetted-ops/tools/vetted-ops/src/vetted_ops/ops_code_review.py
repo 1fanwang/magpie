@@ -52,8 +52,8 @@ for _name, _params in _QUERIES.items():
         )
     )
 
-# The open sweep walks every page of the pullRequests connection.
-_ops.PAGINATED_QUERIES = _ops.PAGINATED_QUERIES | {"cr-open"}
+# The open sweep paginates PRs; the single-PR read paginates review threads.
+_ops.PAGINATED_QUERIES = _ops.PAGINATED_QUERIES | {"cr-open", "cr-pr"}
 
 #: Fixed-path content reads: operation name -> repository path.
 _FIXED_FILES: dict[str, str] = {

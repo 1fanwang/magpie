@@ -329,7 +329,11 @@ same directory; the behaviour is unchanged.
   outdated thread the agent verified the current code addresses leaves the
   thread gate and goes to the maintainer to resolve instead (the agent judges
   every comment in the thread, and a thread longer than the read stays a
-  gate); the
+  gate).
+  The single-PR read paginates review threads; incomplete or inconsistent
+  pages require a fresh read before context or disposition, and cannot render
+  an approval.
+  The
   maintainer may downgrade it, and upgrading past a named gate needs a stated
   reason (#1585).
   When every gate holds and the only findings left are `minor` / `nit` ones

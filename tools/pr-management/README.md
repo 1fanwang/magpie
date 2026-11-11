@@ -238,6 +238,7 @@ uv run --project <framework>/tools/pr-management pr-management code-review <subc
 | `session record`, `session summary` | the session counts and summary text |
 
 When a saved read is missing, a subcommand returns `needs: [{op, params, save, why}]`; the skill runs each bare `vetted-op-read --save` and re-runs it.
+The single-PR read paginates review threads; an incomplete or inconsistent saved read makes `context` and `disposition` request a fresh `gql-cr-pr` read and prevents rendering an approval.
 The agent keeps reading the diff, writing findings and judging severity.
 
 <a id="mentor--pr-management-mentor"></a>
