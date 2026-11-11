@@ -412,6 +412,9 @@ same directory; the behaviour is unchanged.
   without either remains `unknown`. Every surfaced finding carries that
   constraint ledger, and its remediation follows the adopter's applicable
   `AGENTS.md` and dependency or release policy for all three classifications.
+  The deterministic matcher uses `packaging` for PEP 440 semantics, preserving
+  the release precision in wildcard and compatible-release bounds and
+  distinguishing prereleases from final releases.
 - **A green rollup is not evidence CI ran.** `statusCheckRollup.state ==
   SUCCESS` aggregates only completed check-runs, so a PR whose real
   workflows sit in `action_required` — awaiting approval for a

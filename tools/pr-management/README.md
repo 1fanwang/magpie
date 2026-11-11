@@ -45,7 +45,7 @@ What stays with the agent is judgement: inspecting a diff before approving a wor
 
 ## Prerequisites
 
-- **Runtime:** Python 3.11+, stdlib only; run via `uv run --project <framework>/tools/pr-management`.
+- **Runtime:** Python 3.11+ and `packaging` for PEP 440 dependency matching; run via `uv run --project <framework>/tools/pr-management`.
 - **CLIs:** None beyond the runtime. It never calls `gh`: under the secure setup `gh` only works outside the sandbox, so the skill fetches through [`vetted-ops`](../vetted-ops/README.md) and this tool reads the saved files. The one exception is the CI mode `stats build --fetch-with-gh`, which shells out to `gh`.
 - **Credentials / auth:** None (`--fetch-with-gh`: an authenticated `gh`).
 - **Network:** None — reads local files only (`--fetch-with-gh`: `api.github.com` through `gh`).
@@ -227,7 +227,7 @@ uv run --project <framework>/tools/pr-management pr-management code-review <subc
 | `resolve`, `queue` | the ordered review queue with match chips and skip reasons (the five "my reviews" signals and every selector), and `not_open`: PRs a `pr:` list named that are not open |
 | `context` | the PR headline, the slop signals, the security and AI-disclosure scans, the `AGENTS.md` files that apply, the real-CI result, the unresolved threads GitHub marks outdated (`outdated_threads`) |
 | `slop-outcome` | the slop outcome once the agent has judged H1, H5 and S2 |
-| `deps` | the dependency-constraint ledger: `broken`, `compatible` or `unknown` |
+| `deps` | the dependency-constraint ledger: `broken`, `compatible` or `unknown`, using PEP 440 version ordering and specifiers |
 | `disposition` | `APPROVE` / `REQUEST_CHANGES` / `COMMENT`, the footer variant, any conflict note, and whether a `FIXUP` (commit the remaining small, mechanical findings to the PR head, then approve) is the default; `--head-pushable` says the maintainer can push there; each `--addressed-thread <id>` (an outdated thread the current code addresses) leaves the thread gate and is returned in `resolve_first` for the maintainer to resolve |
 | `reviewers` | ranked reviewer suggestions |
 | `render` | the review body file, the payload file, inline anchors (line, side, position) and the `shlex.join`-built post command |

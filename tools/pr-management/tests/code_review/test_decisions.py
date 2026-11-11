@@ -468,3 +468,71 @@ def test_markers_split_environments() -> None:
         }
     )
     assert result["evidence"] == {"uninstallable_in": ["py39"]}
+
+
+@pytest.mark.parametrize(
+    ("specifier", "available", "expected"),
+    [
+        ("~=1.4.0", ["1.4", "1.4.9", "1.5", "2"], ["1.4", "1.4.9"]),
+        ("~=1.0.0", ["1.0", "1.0.7", "1.1"], ["1.0", "1.0.7"]),
+        ("~=1.0", ["1.0", "1.9", "2.0"], ["1.0", "1.9"]),
+        ("==1.0.*", ["1", "1.0", "1.0.5", "1.1"], ["1", "1.0", "1.0.5"]),
+        ("!=1.0.*", ["1", "1.0.5", "1.1", "2"], ["1.1", "2"]),
+        ("==1.0.0", ["1", "1.0", "1.0.0", "1.0.1"], ["1", "1.0", "1.0.0"]),
+        (">=1.0", ["1.0rc1", "1.0", "1.1"], ["1.0", "1.1"]),
+        ("~=1.4.0rc1", ["1.4.0rc1", "1.4.0", "1.4.1", "1.5"], ["1.4.0rc1", "1.4.0", "1.4.1"]),
+    ],
+)
+def test_dependency_specifiers_preserve_pep440_bounds(
+    specifier: str, available: list[str], expected: list[str]
+) -> None:
+    result = deps.classify(
+        ledger={
+            "package": "example",
+            "paths": [{"via": "project", "specifier": specifier}],
+            "available_versions": available,
+            "lacking_api": [version for version in available if version not in expected],
+            "exhaustive": True,
+        }
+    )
+    assert result["environments"]["*"]["satisfying"] == expected
+    assert result["classification"] == "compatible"
+    assert not result["runtime_finding_allowed"]
+
+
+def test_dependency_api_evidence_matches_equivalent_versions() -> None:
+    result = deps.classify(
+        ledger={
+            "package": "example",
+            "paths": [{"via": "project", "specifier": ">=1.0"}],
+            "available_versions": ["1.0.0"],
+            "lacking_api": ["1.0"],
+        }
+    )
+    assert result["classification"] == "broken"
+    assert result["evidence"] == {"failing_resolution": {"*": ["1.0.0"]}}
+
+
+@pytest.mark.parametrize("specifier", [">=1.*", "~=1", "==1.0.*.1"])
+def test_invalid_dependency_specifiers_are_rejected(specifier: str) -> None:
+    with pytest.raises(ValueError):
+        deps.classify(
+            ledger={
+                "package": "example",
+                "paths": [{"via": "project", "specifier": specifier}],
+                "available_versions": ["1.0"],
+            }
+        )
+
+
+@pytest.mark.parametrize("field", ["available_versions", "lacking_api"])
+def test_invalid_dependency_versions_are_rejected(field: str) -> None:
+    ledger: dict[str, Any] = {
+        "package": "example",
+        "paths": [{"via": "project", "specifier": ">=1.0"}],
+        "available_versions": ["1.0"],
+        "lacking_api": [],
+    }
+    ledger[field] = ["not-a-version"]
+    with pytest.raises(ValueError):
+        deps.classify(ledger=ledger)

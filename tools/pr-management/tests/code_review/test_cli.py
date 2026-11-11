@@ -45,6 +45,29 @@ def _run(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, Any]:
     return json.loads(capsys.readouterr().out)
 
 
+@pytest.mark.parametrize("multiple", [False, True])
+def test_dependency_ledger_excludes_versions_outside_compatible_release(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, multiple: bool
+) -> None:
+    ledger: dict[str, Any] = {
+        "package": "example",
+        "paths": [{"via": "project", "specifier": "~=1.4.0"}],
+        "available_versions": ["1.4.0", "1.4.9", "1.5.0"],
+        "lacking_api": ["1.5.0"],
+        "exhaustive": True,
+    }
+    path: Path = tmp_path / "ledger.json"
+    path.write_text(json.dumps([ledger] if multiple else ledger))
+
+    out = _run(capsys, "code-review", "deps", "--ledger", str(path))
+
+    (package,) = out["packages"]
+    assert package["classification"] == "compatible"
+    assert package["environments"]["*"]["satisfying"] == ["1.4.0", "1.4.9"]
+    assert package["environments"]["*"]["failing"] == []
+    assert not package["runtime_finding_allowed"]
+
+
 @pytest.fixture()
 def project(tmp_path: Path) -> Path:
     cfg = tmp_path / "cfg"

@@ -29,70 +29,16 @@ rule prescribes:
   resolution as the evidence;
 * otherwise, exhaustive coverage → `compatible`; partial coverage → `unknown`.
 
-Specifiers follow PEP 440's operators on dotted numeric versions
-(`==`, `!=`, `>=`, `<=`, `>`, `<`, `~=`, `==X.*`); markers are compared as
-literal environment names.
+Specifiers and versions follow PEP 440; markers are compared as literal
+environment names.
 """
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
 from typing import Any
 
-_SPEC = re.compile(r"^\s*(==|!=|>=|<=|~=|>|<)\s*([0-9][0-9A-Za-z.*+-]*)\s*$")
-
-
-def version(value: str) -> tuple[int, ...]:
-    parts = []
-    for piece in value.split("."):
-        digits = re.match(r"\d+", piece)
-        parts.append(int(digits.group(0)) if digits else 0)
-    while len(parts) > 1 and parts[-1] == 0:
-        parts.pop()
-    return tuple(parts)
-
-
-@dataclass(frozen=True)
-class Clause:
-    op: str
-    value: str
-
-    def admits(self, candidate: str) -> bool:
-        v = version(candidate)
-        if self.value.endswith(".*"):
-            prefix = version(self.value[:-2])
-            hit = v[: len(prefix)] == prefix
-            return hit if self.op == "==" else not hit
-        target = version(self.value)
-        if self.op == "==":
-            return v == target
-        if self.op == "!=":
-            return v != target
-        if self.op == ">=":
-            return v >= target
-        if self.op == "<=":
-            return v <= target
-        if self.op == ">":
-            return v > target
-        if self.op == "<":
-            return v < target
-        # ~=X.Y  ->  >=X.Y, ==X.*
-        base = version(self.value)
-        upper = base[:-1] if len(base) > 1 else base
-        return v >= base and v[: len(upper)] == upper
-
-
-def clauses(specifier: str) -> list[Clause]:
-    found = []
-    for part in (specifier or "").split(","):
-        if not part.strip():
-            continue
-        match = _SPEC.match(part)
-        if not match:
-            raise ValueError(f"unsupported specifier clause {part.strip()!r}")
-        found.append(Clause(match.group(1), match.group(2)))
-    return found
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
 
 
 def classify(ledger: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +50,7 @@ def classify(ledger: dict[str, Any]) -> dict[str, Any]:
     """
     environments = ledger.get("environments") or ["*"]
     available = [str(v) for v in ledger.get("available_versions") or []]
-    lacking = {str(v) for v in ledger.get("lacking_api") or []}
+    lacking: set[Version] = {Version(str(v)) for v in ledger.get("lacking_api") or []}
     per_env: dict[str, dict[str, Any]] = {}
     for env in environments:
         active = [
@@ -112,9 +58,9 @@ def classify(ledger: dict[str, Any]) -> dict[str, Any]:
             for p in ledger.get("paths") or []
             if not p.get("environments") or env in p["environments"] or "*" in p.get("environments", [])
         ]
-        rules = [c for p in active for c in clauses(str(p.get("specifier") or ""))]
-        satisfying = sorted((v for v in available if all(c.admits(v) for c in rules)), key=version)
-        failing = [v for v in satisfying if v in lacking]
+        rules: SpecifierSet = SpecifierSet(",".join(str(p.get("specifier") or "") for p in active))
+        satisfying: list[str] = sorted(rules.filter(iterable=available, key=Version), key=Version)
+        failing = [v for v in satisfying if Version(v) in lacking]
         per_env[env] = {"paths": [p.get("via") for p in active], "satisfying": satisfying, "failing": failing}
     empty = [env for env, r in per_env.items() if not r["satisfying"]]
     failing_by_env = {env: r["failing"] for env, r in per_env.items() if r["failing"]}
